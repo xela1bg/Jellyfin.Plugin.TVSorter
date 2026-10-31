@@ -40,14 +40,14 @@ dotnet test Jellyfin.Plugin.TVSorter.sln
 
 The filesystem tests require actual symbolic-link creation permissions and fail explicitly when the host does not permit it. On Windows, enable Developer Mode where permitted or run the tests yourself from a suitably privileged terminal. TV Sorter does not elevate itself. A successful build does not establish symbolic-link capability for the Jellyfin service account or its container.
 
-The plugin metadata is in the repository-root `build.yaml`, following JPRM/Jellyfin plugin repository conventions. The GUID is `9f31de5a-5d0f-4a4a-a820-724b42d8a416`; the current version is `1.0.0.0`; the owner is `xela1bg`. Manual installation requires placing the plugin release package in a `plugins/TV Sorter` directory under Jellyfin's data directory and restarting the server.
+The plugin metadata is in the repository-root `build.yaml`. The GUID is `9f31de5a-5d0f-4a4a-a820-724b42d8a416`; the current version is `1.0.0.1`; the owner is `xela1bg`.
 
-## Plugin catalog and image
+## Installation and configuration
 
-`TVSorter.png` is the supplied artwork. It is copied byte-for-byte to the JPRM-conventional root file `image.png`; JPRM embeds it in the package and uses it to create the catalog `imageUrl` when the repository manifest is generated. The release packaging step also writes Jellyfin's supported `imagePath: "image.png"` into the ZIP's local `meta.json`, so the installed plugin can serve the supplied image through Jellyfin's built-in plugin image endpoint. No custom endpoint or unsupported catalog property is used.
+Published release assets are listed on the [GitHub Releases page](https://github.com/xela1bg/Jellyfin.Plugin.TVSorter/releases). For manual installation, place the release ZIP in a `plugins/TV Sorter` directory under Jellyfin's data directory and restart the server.
 
-Jellyfin 12.3's installed-plugin API does not expose Developer or Repository fields. The Dashboard details page loads package info from configured repositories: Developer comes from the catalog `owner`, while the Repository link comes from the configured repository's name/URL attached to the matching package version. JPRM's supported catalog entry has no source-GitHub-URL property; the project source URL is therefore documented here and in the GitHub repository, rather than added as an unsupported manifest field.
+In the Jellyfin Dashboard, open TV Sorter settings, enter the unsorted media directory, select a Jellyfin Shows library and (when needed) its location, then save. Use Test Paths before running. Choose a refresh interval or leave it at Manual only; the optional scan setting requests Jellyfin's broader library scan after a successful synchronization.
 
-The requested GitHub repository currently exists but is empty and has no Release asset. Consequently, there is not yet a truthful installable catalog entry or a hosted manifest URL. The tag workflow at `.github/workflows/release.yml` builds/tests and publishes `tv-sorter_<version>.zip` on a `v<version>` tag. After that asset exists, run `Publish-RepositoryManifest.ps1` with its actual browser download URL and the public base URL where the repository manifest will be hosted. JPRM then calculates the package checksum and creates/updates root `manifest.json` plus the `tv-sorter/image.png` catalog image. Commit those generated files and add the hosted `manifest.json` URL in Jellyfin's repository settings. Until the manifest is committed and publicly reachable, no repository URL should be entered or advertised as working.
+## Disclaimer
 
-For the first release, commit and push the source to the specified GitHub repository, push tag `v1.0.0.0`, and wait for the release workflow to upload `tv-sorter_1.0.0.0.zip`. Then run the manifest helper with that release's actual asset URL. The helper verifies the URL before generating repository metadata; it never creates a catalog `sourceUrl` for an unpublished asset.
+TV Sorter was developed primarily with AI-assisted coding tools, with manual testing, review, and validation. It is an independent community project and is not an official Jellyfin plugin.

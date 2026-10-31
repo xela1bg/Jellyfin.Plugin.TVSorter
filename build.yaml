@@ -1,6 +1,6 @@
 name: "TV Sorter"
 guid: "9f31de5a-5d0f-4a4a-a820-724b42d8a416"
-version: "1.0.0.0"
+version: "1.0.0.1"
 targetAbi: "12.3.0.0"
 framework: "net10.0"
 overview: "Organize unsorted TV media for Jellyfin using symbolic links."
@@ -12,5 +12,7 @@ owner: "xela1bg"
 image: "image.png"
 artifacts:
   - "Jellyfin.Plugin.TVSorter.dll"
-changelog: >
-  Initial release.
+changelog: |
+  - Updated project documentation.
+  - Added AI development disclaimer.
+  - Cleaned up repository documentation.
