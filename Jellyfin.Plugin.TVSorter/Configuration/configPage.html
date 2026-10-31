@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>TV Sorter</title>
+    <style>
+        .tvSorterPath { overflow-wrap: anywhere; word-break: break-word; }
+        .tvSorterConflict { border-top: 1px solid currentColor; padding: 0.75em 0; }
+        .tvSorterConflict h3 { margin: 0 0 0.5em; }
+        .tvSorterConflictLabel { font-weight: 600; margin-top: 0.4em; }
+        #ConflictDetails, #SkippedDetails { margin-top: 0.5em; }
+    </style>
+</head>
+<body>
+    <div id="TVSorterConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="TVSorterConfigForm">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SourcePath">Unsorted media directory</label>
+                        <input id="SourcePath" name="SourcePath" type="text" is="emby-input" autocomplete="off">
+                        <div class="fieldDescription">The directory containing your existing TV shows. TV Sorter scans this directory but does not rename, move, modify, or delete your original media files.</div>
+                    </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="SelectedLibraryId">TV Sorter library</label>
+                        <select is="emby-select" id="SelectedLibraryId" name="SelectedLibraryId" class="emby-select-withcolor emby-select">
+                            <option value="">Select a Jellyfin Shows library</option>
+                        </select>
+                        <div class="fieldDescription">Select the Jellyfin Shows library where TV Sorter should create the organized symbolic-link structure.</div>
+                    </div>
+                    <div class="selectContainer" id="LibraryLocationContainer" hidden>
+                        <label class="selectLabel" for="SelectedLibraryLocation">Library location</label>
+                        <select is="emby-select" id="SelectedLibraryLocation" name="SelectedLibraryLocation" class="emby-select-withcolor emby-select">
+                            <option value="">Select a library location</option>
+                        </select>
+                    </div>
+                    <div class="fieldDescription">Library path: <span id="LibraryPath">-</span></div>
+                    <div id="LibrarySelectionMessage" class="fieldDescription" role="status" aria-live="polite"></div>
+                    <div id="PreviousTargetNotice" class="fieldDescription" hidden>The previous target will be left untouched.</div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="RefreshInterval">Refresh interval</label>
+                        <select is="emby-select" id="RefreshInterval" name="RefreshInterval" class="emby-select-withcolor emby-select">
+                            <option value="Manual">Manual only</option>
+                            <option value="Every30Minutes">Every 30 minutes</option>
+                            <option value="EveryHour">Every hour</option>
+                            <option value="Every6Hours">Every 6 hours</option>
+                            <option value="Daily">Daily</option>
+                        </select>
+                        <div class="fieldDescription">How often TV Sorter synchronizes the organized library with the unsorted media directory.</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ScanLibraryAfterRefresh" name="ScanLibraryAfterRefresh" type="checkbox" is="emby-checkbox">
+                            <span>Scan selected Jellyfin library after successful synchronization</span>
+                        </label>
+                        <div class="fieldDescription">Jellyfin 12.3's supported plugin API queues a broader library scan, not a scan limited to the selected library.</div>
+                    </div>
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button">
+                            <span>Save</span>
+                        </button>
+                        <button is="emby-button" id="TestPaths" type="button" class="raised emby-button" disabled>
+                            <span>Test Paths</span>
+                        </button>
+                        <button is="emby-button" id="RunNow" type="button" class="raised emby-button" disabled>
+                            <span>Run Now</span>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="sectionTitleContainer"><h2 class="sectionTitle">Latest synchronization</h2></div>
+                <div class="fieldDescription">State: <span id="CurrentState">Idle</span></div>
+                <div class="fieldDescription">Last run: <span id="LastRun">Never</span></div>
+                <div class="fieldDescription">Result: <span id="LastResult">No runs yet</span></div>
+                <div class="fieldDescription">Duration: <span id="LastDuration">-</span></div>
+                <div class="fieldDescription">Files discovered: <span id="FilesDiscovered">0</span></div>
+                <div class="fieldDescription">Episodes matched: <span id="EpisodesMatched">0</span></div>
+                <div class="fieldDescription">Links created: <span id="LinksCreated">0</span></div>
+                <div class="fieldDescription">Links already correct: <span id="LinksAlreadyCorrect">0</span></div>
+                <div class="fieldDescription">Links updated: <span id="LinksUpdated">0</span></div>
+                <div class="fieldDescription">Stale links removed: <span id="StaleLinksRemoved">0</span></div>
+                <div class="fieldDescription">Empty directories removed: <span id="EmptyDirectoriesRemoved">0</span></div>
+                <div class="fieldDescription">Files skipped: <span id="FilesSkipped">0</span></div>
+                <div class="fieldDescription">Conflicts: <span id="ConflictCount">0</span></div>
+                <div class="fieldDescription">Warnings: <span id="WarningCount">0</span></div>
+                <div class="fieldDescription">Errors: <span id="ErrorCount">0</span></div>
+                <div class="fieldDescription">Summary: <span id="Summary">-</span></div>
+                <div class="fieldDescription">Last error: <span id="LastError">-</span></div>
+                <details id="ConflictSection" hidden>
+                    <summary id="ConflictHeading">Conflicts (0)</summary>
+                    <div id="ConflictDetails"></div>
+                </details>
+                <details id="SkippedSection" hidden>
+                    <summary id="SkippedHeading">Skipped files (0)</summary>
+                    <div id="SkippedDetails"></div>
+                </details>
+                <details id="WarningSection" hidden>
+                    <summary id="WarningHeading">Warnings (0)</summary>
+                    <div id="WarningDetails"></div>
+                </details>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            const TVSorter = {
+                pluginId: '9f31de5a-5d0f-4a4a-a820-724b42d8a416',
+                taskKey: 'TVSorterRefresh',
+                pollTimer: null,
+                libraryState: null,
+                configuration: null,
+                selectionValid: false
+            };
+
+            function setText(id, value) {
+                document.querySelector('#' + id).textContent = value == null || value === '' ? '-' : value;
+            }
+
+            function field(object, camelName, pascalName) {
+                return object[camelName] !== undefined ? object[camelName] : object[pascalName];
+            }
+
+            function setSelectionMessage(error, warning) {
+                const element = document.querySelector('#LibrarySelectionMessage');
+                element.textContent = error || warning || '';
+                document.querySelector('#PreviousTargetNotice').hidden = !warning;
+            }
+
+            function populateLocations(libraryId, selectedLocation, libraries, autoSelectSingleLocation) {
+                const library = libraries.find(function (item) { return (item.id || item.Id) === libraryId; });
+                const locations = library ? (library.locations || library.Locations || []) : [];
+                const container = document.querySelector('#LibraryLocationContainer');
+                const locationSelect = document.querySelector('#SelectedLibraryLocation');
+                locationSelect.replaceChildren(new Option('Select a library location', ''));
+                locations.forEach(function (location) {
+                    locationSelect.add(new Option(location, location));
+                });
+                const savedLocationWasRemoved = !!selectedLocation && !locations.includes(selectedLocation);
+                container.hidden = locations.length <= 1 && !savedLocationWasRemoved;
+                if (locations.length === 1 && !selectedLocation && autoSelectSingleLocation) {
+                    locationSelect.value = locations[0];
+                } else {
+                    locationSelect.value = locations.includes(selectedLocation) ? selectedLocation : '';
+                }
+                updateResolvedLibraryPath();
+            }
+
+            function updateResolvedLibraryPath() {
+                const state = TVSorter.libraryState;
+                const libraryId = document.querySelector('#SelectedLibraryId').value;
+                const libraries = state ? (state.libraries || state.Libraries || []) : [];
+                const library = libraries.find(function (item) { return (item.id || item.Id) === libraryId; });
+                const locations = library ? (library.locations || library.Locations || []) : [];
+                const selectedLocation = document.querySelector('#SelectedLibraryLocation').value;
+                document.querySelector('#LibraryPath').textContent = selectedLocation || '-';
+                const valid = !!library && locations.length > 0 && !!selectedLocation;
+                TVSorter.selectionValid = valid;
+                const error = !libraryId
+                    ? 'Select a Jellyfin Shows library.'
+                    : !library
+                        ? 'The selected Jellyfin Shows library is not available.'
+                        : locations.length === 0
+                            ? 'The selected Jellyfin Shows library has no usable filesystem location.'
+                            : !selectedLocation
+                                ? 'Select the exact library location TV Sorter should manage.'
+                                : '';
+                setSelectionMessage(error, '');
+                document.querySelector('#RunNow').disabled = !valid || document.querySelector('#CurrentState').textContent === 'Running';
+                document.querySelector('#TestPaths').disabled = !valid;
+            }
+
+            function renderLibrarySelection(state) {
+                TVSorter.libraryState = state;
+                const libraries = field(state, 'libraries', 'Libraries') || [];
+                const librarySelect = document.querySelector('#SelectedLibraryId');
+                librarySelect.replaceChildren(new Option('Select a Jellyfin Shows library', ''));
+                libraries.forEach(function (library) {
+                    librarySelect.add(new Option(library.name || library.Name, library.id || library.Id));
+                });
+                librarySelect.value = field(state, 'selectedLibraryId', 'SelectedLibraryId') || '';
+                populateLocations(
+                    librarySelect.value,
+                    field(state, 'selectedLibraryLocation', 'SelectedLibraryLocation') || '',
+                    libraries,
+                    field(state, 'needsMigration', 'NeedsMigration') === true);
+                document.querySelector('#LibraryPath').textContent = field(state, 'effectiveTargetPath', 'EffectiveTargetPath') || document.querySelector('#LibraryPath').textContent;
+                setSelectionMessage(field(state, 'error', 'Error'), field(state, 'warning', 'Warning'));
+                const valid = field(state, 'isValid', 'IsValid') === true;
+                TVSorter.selectionValid = valid;
+                document.querySelector('#RunNow').disabled = !valid || document.querySelector('#CurrentState').textContent === 'Running';
+                document.querySelector('#TestPaths').disabled = !valid;
+            }
+
+            function configurationRequest(config, libraryId, location) {
+                return {
+                    SourcePath: config.SourcePath || '',
+                    SelectedLibraryId: libraryId,
+                    SelectedLibraryLocation: location,
+                    RefreshInterval: config.RefreshInterval || 'Manual',
+                    ScanLibraryAfterRefresh: config.ScanLibraryAfterRefresh === true
+                };
+            }
+
+            function saveLibraryConfiguration(request) {
+                return ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('TVSorter/Configuration'),
+                    data: JSON.stringify(request),
+                    contentType: 'application/json',
+                    dataType: 'json'
+                });
+            }
+
+            function loadLibrarySelection() {
+                return ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('TVSorter/Libraries'),
+                    dataType: 'json'
+                }).then(function (state) {
+                    renderLibrarySelection(state);
+                    if (field(state, 'needsMigration', 'NeedsMigration') === true) {
+                        const request = configurationRequest(
+                            TVSorter.configuration,
+                            field(state, 'selectedLibraryId', 'SelectedLibraryId'),
+                            field(state, 'selectedLibraryLocation', 'SelectedLibraryLocation'));
+                        return saveLibraryConfiguration(request).then(function (savedState) {
+                            TVSorter.configuration.SelectedLibraryId = request.SelectedLibraryId;
+                            TVSorter.configuration.SelectedLibraryLocation = request.SelectedLibraryLocation;
+                            TVSorter.configuration.TargetPath = field(savedState, 'effectiveTargetPath', 'EffectiveTargetPath');
+                            renderLibrarySelection(savedState);
+                        }).catch(function (error) {
+                            Dashboard.alert(error.message || 'The existing target could not be safely associated with a Jellyfin Shows library.');
+                        });
+                    }
+                });
+            }
+
+            function formatDuration(value) {
+                if (!value) return '-';
+                if (typeof value === 'string') return value;
+                const totalSeconds = Math.floor(value / 10000000);
+                return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+            }
+
+            function formatDate(value) {
+                if (!value) return 'Never';
+                const date = new Date(value);
+                return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+            }
+
+            function appendTextBlock(container, label, text) {
+                const block = document.createElement('div');
+                block.className = 'tvSorterPath';
+                const heading = document.createElement('div');
+                heading.className = 'tvSorterConflictLabel';
+                heading.textContent = label;
+                const value = document.createElement('div');
+                value.className = 'tvSorterPath';
+                value.textContent = text || '-';
+                block.append(heading, value);
+                container.appendChild(block);
+            }
+
+            function renderConflicts(conflicts) {
+                const section = document.querySelector('#ConflictSection');
+                const details = document.querySelector('#ConflictDetails');
+                details.replaceChildren();
+                section.hidden = conflicts.length === 0;
+                document.querySelector('#ConflictHeading').textContent = `Conflicts (${conflicts.length})`;
+
+                conflicts.forEach(function (conflict, index) {
+                    const block = document.createElement('section');
+                    block.className = 'tvSorterConflict';
+                    const title = document.createElement('h3');
+                    title.textContent = `Conflict ${index + 1}`;
+                    block.appendChild(title);
+                    appendTextBlock(block, 'Destination', conflict.destinationPath || conflict.DestinationPath);
+                    appendTextBlock(block, 'Reason', conflict.reason || conflict.Reason);
+
+                    const sourceHeading = document.createElement('div');
+                    sourceHeading.className = 'tvSorterConflictLabel';
+                    sourceHeading.textContent = 'Source candidates';
+                    block.appendChild(sourceHeading);
+                    const sources = conflict.sourcePaths || conflict.SourcePaths || [];
+                    if (sources.length === 0) {
+                        appendTextBlock(block, '', 'No source path recorded.');
+                    } else {
+                        const list = document.createElement('ol');
+                        sources.forEach(function (source) {
+                            const item = document.createElement('li');
+                            item.className = 'tvSorterPath';
+                            item.textContent = source;
+                            list.appendChild(item);
+                        });
+                        block.appendChild(list);
+                    }
+                    details.appendChild(block);
+                });
+            }
+
+            function renderSkippedItems(items) {
+                const section = document.querySelector('#SkippedSection');
+                const details = document.querySelector('#SkippedDetails');
+                details.replaceChildren();
+                section.hidden = items.length === 0;
+                document.querySelector('#SkippedHeading').textContent = `Skipped files (${items.length})`;
+                items.forEach(function (item) {
+                    const block = document.createElement('div');
+                    block.className = 'tvSorterConflict';
+                    appendTextBlock(block, item.category || item.Category || 'Skipped', item.path || item.Path);
+                    appendTextBlock(block, 'Reason', item.reason || item.Reason);
+                    details.appendChild(block);
+                });
+            }
+
+            function renderWarnings(warnings) {
+                const section = document.querySelector('#WarningSection');
+                const details = document.querySelector('#WarningDetails');
+                details.replaceChildren();
+                section.hidden = warnings.length === 0;
+                document.querySelector('#WarningHeading').textContent = `Warnings (${warnings.length})`;
+                warnings.forEach(function (warning) {
+                    appendTextBlock(details, 'Warning', warning);
+                });
+            }
+
+            function refreshTriggers(interval) {
+                const ticks = {
+                    Every30Minutes: 18000000000,
+                    EveryHour: 36000000000,
+                    Every6Hours: 216000000000,
+                    Daily: 864000000000
+                };
+                const triggerList = ticks[interval]
+                    ? [{ Type: 'IntervalTrigger', IntervalTicks: ticks[interval] }]
+                    : [];
+
+                return ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('ScheduledTasks'),
+                    dataType: 'json'
+                }).then(function (tasks) {
+                    const task = tasks.find(function (item) { return item.Key === TVSorter.taskKey; });
+                    if (!task) throw new Error('TV Sorter scheduled task was not found.');
+                    return ApiClient.ajax({
+                        type: 'POST',
+                        url: ApiClient.getUrl('ScheduledTasks/' + encodeURIComponent(task.Id) + '/Triggers'),
+                        data: JSON.stringify(triggerList),
+                        contentType: 'application/json'
+                    });
+                });
+            }
+
+            function showResult(result) {
+                const status = result.lastResult || result.LastResult;
+                const running = result.isRunning === true || result.IsRunning === true;
+                document.querySelector('#CurrentState').textContent = running ? 'Running' : 'Idle';
+                document.querySelector('#RunNow').disabled = running || !TVSorter.selectionValid;
+                if (!status) return;
+
+                const value = function (camel, pascal) {
+                    return status[camel] !== undefined ? status[camel] : status[pascal];
+                };
+                setText('LastRun', formatDate(value('completedAt', 'CompletedAt') || value('startedAt', 'StartedAt')));
+                setText('LastResult', value('status', 'Status'));
+                setText('LastDuration', formatDuration(value('duration', 'Duration')));
+                setText('FilesDiscovered', value('filesDiscovered', 'FilesDiscovered'));
+                setText('EpisodesMatched', value('episodesMatched', 'EpisodesMatched'));
+                setText('LinksCreated', value('linksCreated', 'LinksCreated'));
+                setText('LinksAlreadyCorrect', value('linksAlreadyCorrect', 'LinksAlreadyCorrect'));
+                setText('LinksUpdated', value('linksUpdated', 'LinksUpdated'));
+                setText('StaleLinksRemoved', value('staleLinksRemoved', 'StaleLinksRemoved'));
+                setText('EmptyDirectoriesRemoved', value('emptyDirectoriesRemoved', 'EmptyDirectoriesRemoved'));
+                setText('FilesSkipped', value('filesSkipped', 'FilesSkipped'));
+                const conflicts = value('conflicts', 'Conflicts') || [];
+                const warnings = value('warnings', 'Warnings') || [];
+                const errors = value('errors', 'Errors') || [];
+                const skippedItems = value('skippedItems', 'SkippedItems') || [];
+                setText('ConflictCount', conflicts.length);
+                setText('WarningCount', warnings.length);
+                setText('ErrorCount', errors.length);
+                setText('Summary', value('summary', 'Summary'));
+                setText('LastError', value('lastError', 'LastError') || errors[errors.length - 1]);
+                renderConflicts(conflicts);
+                renderSkippedItems(skippedItems);
+                renderWarnings(warnings);
+
+                if (running) {
+                    window.clearTimeout(TVSorter.pollTimer);
+                    TVSorter.pollTimer = window.setTimeout(loadStatus, 2000);
+                }
+            }
+
+            function loadStatus() {
+                return ApiClient.ajax({
+                    type: 'GET',
+                    url: ApiClient.getUrl('TVSorter/Status'),
+                    dataType: 'json'
+                }).then(showResult);
+            }
+
+            document.querySelector('#TVSorterConfigPage').addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(TVSorter.pluginId).then(function (config) {
+                    TVSorter.configuration = config;
+                    document.querySelector('#SourcePath').value = config.SourcePath || '';
+                    document.querySelector('#RefreshInterval').value = config.RefreshInterval || 'Manual';
+                    document.querySelector('#ScanLibraryAfterRefresh').checked = config.ScanLibraryAfterRefresh === true;
+                    return loadLibrarySelection().then(function () {
+                        return refreshTriggers(config.RefreshInterval || 'Manual').catch(function (error) {
+                            Dashboard.alert(error.message || 'Could not synchronize the saved refresh interval.');
+                        });
+                    }).then(loadStatus);
+                }).catch(function (error) {
+                    Dashboard.alert(error.message || 'Could not load TV Sorter configuration.');
+                }).finally(function () {
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector('#TVSorterConfigForm').addEventListener('submit', function (event) {
+                event.preventDefault();
+                Dashboard.showLoadingMsg();
+                const config = TVSorter.configuration || {};
+                config.SourcePath = document.querySelector('#SourcePath').value.trim();
+                config.RefreshInterval = document.querySelector('#RefreshInterval').value;
+                config.ScanLibraryAfterRefresh = document.querySelector('#ScanLibraryAfterRefresh').checked;
+                const libraries = TVSorter.libraryState ? (TVSorter.libraryState.libraries || TVSorter.libraryState.Libraries || []) : [];
+                const selectedLibraryId = document.querySelector('#SelectedLibraryId').value;
+                const selectedLibrary = libraries.find(function (item) { return (item.id || item.Id) === selectedLibraryId; });
+                const locations = selectedLibrary ? (selectedLibrary.locations || selectedLibrary.Locations || []) : [];
+                const selectedLocation = locations.length === 1
+                    ? locations[0]
+                    : document.querySelector('#SelectedLibraryLocation').value;
+                const request = configurationRequest(config, selectedLibraryId, selectedLocation);
+                saveLibraryConfiguration(request).then(function (state) {
+                    config.SelectedLibraryId = request.SelectedLibraryId;
+                    config.SelectedLibraryLocation = request.SelectedLibraryLocation;
+                    config.TargetPath = field(state, 'effectiveTargetPath', 'EffectiveTargetPath');
+                    TVSorter.configuration = config;
+                    renderLibrarySelection(state);
+                    return refreshTriggers(config.RefreshInterval).then(function () {
+                        Dashboard.alert('TV Sorter settings saved.');
+                    });
+                }).catch(function (error) {
+                    Dashboard.alert(error.message || 'Could not save TV Sorter settings or schedule.');
+                    return loadLibrarySelection();
+                }).finally(function () {
+                    Dashboard.hideLoadingMsg();
+                });
+                return false;
+            });
+
+            document.querySelector('#TestPaths').addEventListener('click', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('TVSorter/TestPaths'),
+                    data: JSON.stringify({
+                        SourcePath: document.querySelector('#SourcePath').value.trim(),
+                        SelectedLibraryId: document.querySelector('#SelectedLibraryId').value,
+                        SelectedLibraryLocation: document.querySelector('#SelectedLibraryLocation').value
+                    }),
+                    contentType: 'application/json',
+                    dataType: 'json'
+                }).then(function (result) {
+                    Dashboard.alert([
+                        'Unsorted media directory: ' + (field(result, 'sourceStatus', 'SourceStatus') || '-'),
+                        'TV Sorter library: ' + (field(result, 'libraryName', 'LibraryName') || '-'),
+                        'Library path: ' + (field(result, 'libraryPath', 'LibraryPath') || '-'),
+                        'Target: ' + (field(result, 'targetStatus', 'TargetStatus') || '-'),
+                        'Symbolic links: ' + (field(result, 'symlinkStatus', 'SymlinkStatus') || '-')
+                    ].join('\n'));
+                }).catch(function (error) {
+                    Dashboard.alert(error.message || 'Path validation failed.');
+                }).finally(function () {
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector('#RunNow').addEventListener('click', function () {
+                if (!TVSorter.selectionValid) {
+                    Dashboard.alert('Select a valid Jellyfin Shows library and location before running TV Sorter.');
+                    return;
+                }
+                document.querySelector('#RunNow').disabled = true;
+                document.querySelector('#CurrentState').textContent = 'Running';
+                loadStatus();
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('TVSorter/Run')
+                }).then(function () {
+                    return loadStatus();
+                }).catch(function (error) {
+                    Dashboard.alert(error.message || 'TV Sorter could not start.');
+                    return loadStatus();
+                });
+            });
+
+            document.querySelector('#SelectedLibraryId').addEventListener('change', function () {
+                const libraries = TVSorter.libraryState ? (TVSorter.libraryState.libraries || TVSorter.libraryState.Libraries || []) : [];
+                populateLocations(this.value, '', libraries, true);
+            });
+            document.querySelector('#SelectedLibraryLocation').addEventListener('change', function () {
+                updateResolvedLibraryPath();
+            });
+        </script>
+    </div>
+</body>
+</html>

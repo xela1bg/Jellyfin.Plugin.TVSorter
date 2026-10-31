@@ -1,0 +1,60 @@
+name: Build and publish TV Sorter
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install JPRM
+        run: python -m pip install jprm==1.1.0
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          metadata_version="$(python -c 'import yaml; print(yaml.safe_load(open("build.yaml", encoding="utf-8"))["version"])')"
+          if [[ "$version" != "$metadata_version" ]]; then
+            echo "Release tag version $version does not match build.yaml version $metadata_version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test solution
+        run: dotnet test Jellyfin.Plugin.TVSorter.sln --configuration Release
+
+      - name: Build JPRM package
+        run: |
+          mkdir -p artifacts
+          python -m jprm plugin build . \
+            --version "${{ steps.version.outputs.version }}" \
+            --dotnet-framework net10.0 \
+            --dotnet-configuration Release \
+            --output artifacts
+          python scripts/add_local_image_path.py "artifacts/tv-sorter_${{ steps.version.outputs.version }}.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/tv-sorter_${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true

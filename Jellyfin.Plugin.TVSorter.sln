@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jellyfin.Plugin.TVSorter", "Jellyfin.Plugin.TVSorter\Jellyfin.Plugin.TVSorter.csproj", "{A6EA7C3A-6C23-4773-92CE-11E8A90A8181}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jellyfin.Plugin.TVSorter.Tests", "Jellyfin.Plugin.TVSorter.Tests\Jellyfin.Plugin.TVSorter.Tests.csproj", "{266D9704-6C8B-4DB5-90CF-2207B2F51D9E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6EA7C3A-6C23-4773-92CE-11E8A90A8181}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6EA7C3A-6C23-4773-92CE-11E8A90A8181}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6EA7C3A-6C23-4773-92CE-11E8A90A8181}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6EA7C3A-6C23-4773-92CE-11E8A90A8181}.Release|Any CPU.Build.0 = Release|Any CPU
+		{266D9704-6C8B-4DB5-90CF-2207B2F51D9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{266D9704-6C8B-4DB5-90CF-2207B2F51D9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{266D9704-6C8B-4DB5-90CF-2207B2F51D9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{266D9704-6C8B-4DB5-90CF-2207B2F51D9E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
