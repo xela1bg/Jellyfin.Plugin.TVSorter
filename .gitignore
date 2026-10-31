@@ -2,3 +2,4 @@
 **/obj/
 **/TestResults/
 artifacts/
+.gitignore
