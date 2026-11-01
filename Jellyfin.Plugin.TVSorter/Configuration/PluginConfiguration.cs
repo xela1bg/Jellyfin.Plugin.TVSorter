@@ -15,6 +15,8 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public RefreshInterval RefreshInterval { get; set; } = Jellyfin.Plugin.TVSorter.Configuration.RefreshInterval.Manual;
 
     public bool ScanLibraryAfterRefresh { get; set; }
+
+    public bool UseTvmaze { get; set; } = true;
 }
 
 public enum RefreshInterval

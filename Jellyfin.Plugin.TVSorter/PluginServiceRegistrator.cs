@@ -19,6 +19,10 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<LibrarySelectionService>();
         serviceCollection.AddSingleton<IVirtualTvLibraryBuilder, VirtualTvLibraryBuilder>();
         serviceCollection.AddSingleton<Func<PluginConfiguration?>>(_ => () => Plugin.Instance?.Configuration);
+        serviceCollection.AddSingleton(provider => new ShowNameCanonicalizer(
+            new HttpClient(),
+            provider.GetRequiredService<ManagedLinkManifestStore>(),
+            provider.GetRequiredService<Func<PluginConfiguration?>>()));
         serviceCollection.AddSingleton<BuildCoordinator>();
     }
 }

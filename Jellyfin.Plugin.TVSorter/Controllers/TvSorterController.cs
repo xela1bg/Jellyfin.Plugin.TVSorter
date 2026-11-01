@@ -66,7 +66,8 @@ public sealed class TvSorterController : ControllerBase
             SelectedLibraryId = request.SelectedLibraryId,
             SelectedLibraryLocation = request.SelectedLibraryLocation,
             RefreshInterval = request.RefreshInterval,
-            ScanLibraryAfterRefresh = request.ScanLibraryAfterRefresh
+            ScanLibraryAfterRefresh = request.ScanLibraryAfterRefresh,
+            UseTvmaze = request.UseTvmaze
         };
 
         if (!_librarySelectionService.TryApplySelection(updated, current, out var selection))
@@ -113,7 +114,8 @@ public sealed class TvSorterController : ControllerBase
             SelectedLibraryId = request.SelectedLibraryId,
             SelectedLibraryLocation = request.SelectedLibraryLocation,
             RefreshInterval = current.RefreshInterval,
-            ScanLibraryAfterRefresh = current.ScanLibraryAfterRefresh
+            ScanLibraryAfterRefresh = current.ScanLibraryAfterRefresh,
+            UseTvmaze = current.UseTvmaze
         };
         var selection = _librarySelectionService.GetState(candidate);
         if (!selection.IsValid)

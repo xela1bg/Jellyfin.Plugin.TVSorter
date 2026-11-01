@@ -47,6 +47,8 @@ public sealed class SaveConfigurationRequest
     public RefreshInterval RefreshInterval { get; set; }
 
     public bool ScanLibraryAfterRefresh { get; set; }
+
+    public bool UseTvmaze { get; set; } = true;
 }
 
 public sealed class TestPathsResult

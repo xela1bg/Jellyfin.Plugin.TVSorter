@@ -17,6 +17,18 @@ This project targets Jellyfin Server 12.3 with `net10.0`, `Jellyfin.Controller` 
 
 Python `str.title()` and .NET invariant `TextInfo.ToTitleCase()` intentionally differ for all-uppercase words: Python turns `SHOW` into `Show`, while .NET preserves `SHOW` as an acronym. A parser test records that behavior. An accented Latin title-case case is also tested. Invariant casing keeps output stable across host locales.
 
+## Automatic show names
+
+After parsing, TV Sorter removes only trailing four-digit years (`Foundation (2021)` or `Foundation 2021`) and normalizes casing for local identity. Numeric titles such as `1923`, `1883`, `3 Body Problem`, `Station 19`, and `Hawaii Five-0` are preserved. Unmarked files and season-only packs still keep their original file names.
+
+**Use TVmaze to improve TV show names** is enabled by default. TVmaze's public [show search API](https://www.tvmaze.com/api) requires no account or API key. Episodes are grouped by normalized show candidate, with at most one request per group per run. Clear matches use TVmaze's canonical name for both the show directory and episode filenames; successful mappings (local name, TVmaze ID, canonical name, and any local year evidence) are cached in `TVSorter/show-names.json` under Jellyfin's application data directory and reused across scheduled runs and restarts. Disabling the option uses local names without requesting TVmaze or applying its cached mappings.
+
+Matches require at least 88% normalized-name similarity, sufficient provider score and combined confidence, and a clear margin over competing results. Available premiere years help distinguish remakes; conflicting year evidence falls back locally. Requests have a two-second timeout and an eight-second total online budget per synchronization. A transport error, timeout, or unsuccessful HTTP response stops additional online requests for that run; cached matches remain usable. Unavailable, empty, malformed, ambiguous, unsafe, or low-confidence responses never block normal link processing. There is no confirmation screen, unmatched queue, or manual-alias requirement.
+
+When a name changes, canonical links are created first. Old links are removed only when ownership is verified and any desired replacements are successfully reconciled. Only recorded, empty managed directories are removed. Untracked files, symlinks, and directories are left untouched, even if they prevent an old show directory from disappearing.
+
+Tests use mocked HTTP responses and never contact TVmaze.
+
 ## Safety and limits
 
 The builder requires canonical source and target trees not to overlap, and neither tree may contain the plugin's external data directory. It refuses unmanaged destination entries and duplicate desired destinations, only replaces/removes symbolic links whose stored target matches the ownership manifest, and reads dangling link targets without resolving them. Conflicts and safe skips are structured informational outcomes and do not fail an otherwise completed synchronization. With a missing manifest, existing destinations are treated as unowned conflicts while absent desired destinations may be created; an invalid manifest stops synchronization before media-tree changes. Filesystem operations are synchronous and cannot always be interrupted mid-call; cancellation is checked between operations.
@@ -40,7 +52,7 @@ dotnet test Jellyfin.Plugin.TVSorter.sln
 
 The filesystem tests require actual symbolic-link creation permissions and fail explicitly when the host does not permit it. On Windows, enable Developer Mode where permitted or run the tests yourself from a suitably privileged terminal. TV Sorter does not elevate itself. A successful build does not establish symbolic-link capability for the Jellyfin service account or its container.
 
-The plugin metadata is in the repository-root `build.yaml`. The GUID is `9f31de5a-5d0f-4a4a-a820-724b42d8a416`; the current version is `1.0.0.1`; the owner is `xela1bg`.
+The plugin metadata is in the repository-root `build.yaml`. The GUID is `9f31de5a-5d0f-4a4a-a820-724b42d8a416`; the current version is `1.0.0.3`; the owner is `xela1bg`.
 
 ## Installation and configuration
 

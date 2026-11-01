@@ -10,19 +10,22 @@ public sealed class VirtualTvLibraryBuilder : IVirtualTvLibraryBuilder
     private readonly SymlinkManager _symlinkManager;
     private readonly ManagedLinkManifestStore _manifestStore;
     private readonly ILogger<VirtualTvLibraryBuilder> _logger;
+    private readonly ShowNameCanonicalizer? _canonicalizer;
 
     public VirtualTvLibraryBuilder(
         TvEpisodeParser parser,
         PathValidator pathValidator,
         SymlinkManager symlinkManager,
         ManagedLinkManifestStore manifestStore,
-        ILogger<VirtualTvLibraryBuilder> logger)
+        ILogger<VirtualTvLibraryBuilder> logger,
+        ShowNameCanonicalizer? canonicalizer = null)
     {
         _parser = parser;
         _pathValidator = pathValidator;
         _symlinkManager = symlinkManager;
         _manifestStore = manifestStore;
         _logger = logger;
+        _canonicalizer = canonicalizer;
     }
 
     public async Task<BuildResult> SynchronizeAsync(string sourcePath, string targetPath, CancellationToken cancellationToken)
@@ -68,7 +71,11 @@ public sealed class VirtualTvLibraryBuilder : IVirtualTvLibraryBuilder
             return Complete(result, BuildStatus.Failed, started);
         }
 
+        desired = await CanonicalizeDesiredAsync(desired, cancellationToken).ConfigureAwait(false);
         var desiredPaths = new HashSet<string>(desired.Keys, GetPathComparer());
+        var desiredBySource = desired.SelectMany(pair => pair.Value.Select(entry => (Path: pair.Key, Entry: entry)))
+            .GroupBy(item => item.Entry.SourcePath, GetPathComparer())
+            .ToDictionary(group => group.Key, group => group.ToArray(), GetPathComparer());
         var blockedPaths = new HashSet<string>(GetPathComparer());
         foreach (var pair in desired.Where(pair => pair.Value.Count > 1))
         {
@@ -233,6 +240,19 @@ public sealed class VirtualTvLibraryBuilder : IVirtualTvLibraryBuilder
                     continue;
                 }
 
+                var replacements = pair.Value.AcceptedTargets()
+                    .Where(desiredBySource.ContainsKey).SelectMany(source => desiredBySource[source]).ToArray();
+                if (replacements.Any(replacement => blockedPaths.Contains(replacement.Path)
+                    || !manifest.Links.TryGetValue(replacement.Path, out var replacementManifest)
+                    || !IsContainedDestination(paths.TargetPath, replacement.Path, out var replacementPath)
+                    || HasLinkedParent(paths.TargetPath, Path.GetDirectoryName(replacementPath)!)
+                    || !IsRecordedTarget(replacementPath, replacementManifest)
+                    || !_symlinkManager.StoredTargetMatches(replacementPath, replacement.Entry.SourcePath)))
+                {
+                    result.Warnings.Add($"Retained managed link until its replacement is successfully reconciled: {destinationPath}");
+                    continue;
+                }
+
                 _symlinkManager.DeleteVerifiedLink(destinationPath, currentTarget!);
                 manifest.Links.Remove(pair.Key);
                 result.StaleLinksRemoved++;
@@ -372,6 +392,34 @@ public sealed class VirtualTvLibraryBuilder : IVirtualTvLibraryBuilder
                 entries.Add(new DesiredEntry(Path.GetFullPath(file), relativeDestination, parsed));
                 _logger.LogDebug("Parsed {SourcePath} to {DestinationPath} ({Season}, {Episode}).", file, relativeDestination, parsed.Season, parsed.Episode);
             }
+        }
+
+        return desired;
+    }
+
+    private async Task<Dictionary<string, List<DesiredEntry>>> CanonicalizeDesiredAsync(
+        Dictionary<string, List<DesiredEntry>> discovered,
+        CancellationToken cancellationToken)
+    {
+        var entries = discovered.Values.SelectMany(items => items)
+            .Select(entry => (Entry: entry, Candidate: ShowNameNormalizer.Normalize(entry.Episode.ShowName))).ToArray();
+        var candidates = entries.Select(item => item.Candidate).ToArray();
+        var names = _canonicalizer is null
+            ? candidates.GroupBy(candidate => candidate.Identity).ToDictionary(group => group.Key, group => group.First().Name)
+            : await _canonicalizer.ResolveAsync(candidates, cancellationToken).ConfigureAwait(false);
+        var desired = new Dictionary<string, List<DesiredEntry>>(GetPathComparer());
+        foreach (var item in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var episode = item.Entry.Episode with { ShowName = names[item.Candidate.Identity] };
+            var relativePath = Path.Combine(episode.ShowName, episode.SeasonDirectory, episode.GetFileName(Path.GetFileName(item.Entry.SourcePath)));
+            if (!desired.TryGetValue(relativePath, out var destinations))
+            {
+                destinations = [];
+                desired.Add(relativePath, destinations);
+            }
+
+            destinations.Add(item.Entry with { RelativePath = relativePath, Episode = episode });
         }
 
         return desired;

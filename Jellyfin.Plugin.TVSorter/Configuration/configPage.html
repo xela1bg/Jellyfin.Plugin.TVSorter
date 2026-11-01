@@ -48,6 +48,12 @@
                         </select>
                         <div class="fieldDescription">How often TV Sorter synchronizes the organized library with the unsorted media directory.</div>
                     </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="UseTvmaze" name="UseTvmaze" type="checkbox" is="emby-checkbox">
+                            <span>Use TVmaze to improve TV show names</span>
+                        </label>
+                    </div>
                     <div class="checkboxContainer checkboxContainer-withDescription">
                         <label class="emby-checkbox-label">
                             <input id="ScanLibraryAfterRefresh" name="ScanLibraryAfterRefresh" type="checkbox" is="emby-checkbox">
@@ -196,7 +202,8 @@
                     SelectedLibraryId: libraryId,
                     SelectedLibraryLocation: location,
                     RefreshInterval: config.RefreshInterval || 'Manual',
-                    ScanLibraryAfterRefresh: config.ScanLibraryAfterRefresh === true
+                    ScanLibraryAfterRefresh: config.ScanLibraryAfterRefresh === true,
+                    UseTvmaze: config.UseTvmaze !== false
                 };
             }
 
@@ -405,6 +412,7 @@
                     document.querySelector('#SourcePath').value = config.SourcePath || '';
                     document.querySelector('#RefreshInterval').value = config.RefreshInterval || 'Manual';
                     document.querySelector('#ScanLibraryAfterRefresh').checked = config.ScanLibraryAfterRefresh === true;
+                    document.querySelector('#UseTvmaze').checked = config.UseTvmaze !== false;
                     return loadLibrarySelection().then(function () {
                         return refreshTriggers(config.RefreshInterval || 'Manual').catch(function (error) {
                             Dashboard.alert(error.message || 'Could not synchronize the saved refresh interval.');
@@ -424,6 +432,7 @@
                 config.SourcePath = document.querySelector('#SourcePath').value.trim();
                 config.RefreshInterval = document.querySelector('#RefreshInterval').value;
                 config.ScanLibraryAfterRefresh = document.querySelector('#ScanLibraryAfterRefresh').checked;
+                config.UseTvmaze = document.querySelector('#UseTvmaze').checked;
                 const libraries = TVSorter.libraryState ? (TVSorter.libraryState.libraries || TVSorter.libraryState.Libraries || []) : [];
                 const selectedLibraryId = document.querySelector('#SelectedLibraryId').value;
                 const selectedLibrary = libraries.find(function (item) { return (item.id || item.Id) === selectedLibraryId; });
