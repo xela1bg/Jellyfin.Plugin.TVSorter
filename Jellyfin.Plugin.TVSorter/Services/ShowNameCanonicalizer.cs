@@ -12,6 +12,7 @@ public sealed class ShowNameCanonicalizer : IDisposable
     private readonly Func<PluginConfiguration?> _configuration;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Dictionary<string, CachedShow>? _cache;
+    private int _lookupOffset;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public ShowNameCanonicalizer(HttpClient httpClient, ManagedLinkManifestStore manifestStore, Func<PluginConfiguration?> configuration)
@@ -37,8 +38,12 @@ public sealed class ShowNameCanonicalizer : IDisposable
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             budget.CancelAfter(TimeSpan.FromSeconds(8));
             var onlineAvailable = true;
-            foreach (var group in groups)
+            var emptyResults = new List<(string Identity, string Key, ShowNameCandidate Candidate)>();
+            var offset = groups.Length == 0 ? 0 : _lookupOffset % groups.Length;
+            for (var position = 0; position < groups.Length; position++)
             {
+                var index = (offset + position) % groups.Length;
+                var group = groups[index];
                 cancellationToken.ThrowIfCancellationRequested();
                 var years = group.Where(candidate => candidate.Year.HasValue).Select(candidate => candidate.Year).Distinct().ToArray();
                 var candidate = group.First() with { Year = years.Length == 1 ? years[0] : null };
@@ -56,6 +61,7 @@ public sealed class ShowNameCanonicalizer : IDisposable
 
                 try
                 {
+                    _lookupOffset = (index + 1) % groups.Length;
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(budget.Token);
                     timeout.CancelAfter(TimeSpan.FromSeconds(2));
                     using var response = await _httpClient.GetAsync(
@@ -68,6 +74,11 @@ public sealed class ShowNameCanonicalizer : IDisposable
                     }
 
                     var results = await response.Content.ReadFromJsonAsync<List<SearchResult>>(JsonOptions, timeout.Token).ConfigureAwait(false);
+                    if (results is { Count: 0 })
+                    {
+                        emptyResults.Add((group.Key, key, candidate));
+                    }
+
                     var match = SelectMatch(candidate, results ?? []);
                     if (match is null)
                     {
@@ -88,12 +99,45 @@ public sealed class ShowNameCanonicalizer : IDisposable
                 }
             }
 
+            foreach (var item in emptyResults)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var match = FindVerifiedSpellingMatch(item.Candidate);
+                if (match is null)
+                {
+                    continue;
+                }
+
+                resolved[item.Identity] = match.CanonicalName;
+                _cache[item.Key] = match with { CleanedLocalName = item.Candidate.Name, Year = item.Candidate.Year ?? match.Year };
+                SaveCache();
+            }
+
             return resolved;
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private CachedShow? FindVerifiedSpellingMatch(ShowNameCandidate candidate)
+    {
+        var matches = _cache!.Values.Where(match => !candidate.Year.HasValue || candidate.Year == match.Year)
+            .GroupBy(match => match.TvmazeId)
+            .Select(group => group.First())
+            .Select(match => new { Match = match, Identity = ShowNameNormalizer.Identity(match.CanonicalName) })
+            .Select(item => new { item.Match, Length = Math.Max(candidate.Identity.Length, item.Identity.Length), Similarity = Similarity(candidate.Identity, item.Identity) })
+            .OrderByDescending(item => item.Similarity).ToArray();
+        if (matches.Length == 0)
+        {
+            return null;
+        }
+
+        var best = matches[0];
+        return best.Length >= 8 && best.Similarity >= 0.9 && (1 - best.Similarity) * best.Length <= 1.000001
+            && (matches.Length == 1 || best.Similarity - matches[1].Similarity >= 0.06)
+            ? best.Match : null;
     }
 
     private static TvmazeShow? SelectMatch(ShowNameCandidate candidate, IEnumerable<SearchResult> results)
@@ -108,7 +152,7 @@ public sealed class ShowNameCanonicalizer : IDisposable
                 var yearMatch = candidate.Year.HasValue && candidate.Year == year;
                 var yearMismatch = candidate.Year.HasValue && year.HasValue && candidate.Year != year;
                 var score = double.IsFinite(result.Score) && result.Score > 0 ? result.Score : 0;
-                var confidence = 0.85 * similarity + 0.15 * score / (score + 1) + (yearMatch ? 0.12 : 0) - (yearMismatch ? 0.12 : 0);
+                var confidence = 0.95 * similarity + 0.05 * score / (score + 1) + (yearMatch ? 0.12 : 0) - (yearMismatch ? 0.12 : 0);
                 return new { result.Show, Similarity = similarity, Score = score, Confidence = confidence, YearMismatch = yearMismatch };
             })
             .OrderByDescending(result => result.Confidence).ToArray();
@@ -118,7 +162,7 @@ public sealed class ShowNameCanonicalizer : IDisposable
         }
 
         var best = ranked[0];
-        return best.Similarity >= 0.88 && best.Score >= 1 && !best.YearMismatch
+        return best.Similarity >= 0.88 && !best.YearMismatch
             && best.Confidence >= 0.86 && (ranked.Length == 1 || best.Confidence - ranked[1].Confidence >= 0.06)
             ? best.Show : null;
     }

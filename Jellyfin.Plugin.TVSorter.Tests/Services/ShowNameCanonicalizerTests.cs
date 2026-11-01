@@ -55,6 +55,83 @@ public sealed class ShowNameCanonicalizerTests
     }
 
     [Fact]
+    public async Task AcceptsClearPluralTypoWithRealisticProviderScore()
+    {
+        using var fixture = new CanonicalizerFixture("[{\"score\":0.5287102,\"show\":{\"id\":58933,\"name\":\"Happy Face\",\"premiered\":\"2025-03-20\"}}]");
+        var candidate = ShowNameNormalizer.Normalize("Happy Faces");
+        var result = await fixture.Canonicalizer.ResolveAsync([candidate], CancellationToken.None);
+        Assert.Equal("Happy Face", result[candidate.Identity]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptyTypoLookupReusesVerifiedCanonicalNameRegardlessOfDiscoveryOrder(bool typoFirst)
+    {
+        using var fixture = new CanonicalizerFixture("[]");
+        fixture.Handler.Respond = request => request.RequestUri!.Query.Contains("Flve", StringComparison.Ordinal)
+            ? "[]" : "[{\"score\":0.9,\"show\":{\"id\":23,\"name\":\"Hawaii Five-0\"}}]";
+        var typo = ShowNameNormalizer.Normalize("Hawaii Flve 0");
+        var canonical = ShowNameNormalizer.Normalize("Hawaii Five-0");
+        var result = await fixture.Canonicalizer.ResolveAsync(typoFirst ? [typo, canonical] : [canonical, typo], CancellationToken.None);
+        Assert.Equal("Hawaii Five-0", result[typo.Identity]);
+        Assert.Equal("Hawaii Five-0", result[canonical.Identity]);
+        Assert.Equal(2, fixture.Handler.Requests);
+        using var reloaded = new ShowNameCanonicalizer(new HttpClient(fixture.Handler, false), fixture.Store, () => fixture.Configuration);
+        var second = await reloaded.ResolveAsync([typo, canonical], CancellationToken.None);
+        Assert.Equal("Hawaii Five-0", second[typo.Identity]);
+        Assert.Equal(2, fixture.Handler.Requests);
+    }
+
+    [Fact]
+    public async Task AmbiguousProviderResultDoesNotUseNearbyCachedName()
+    {
+        using var fixture = new CanonicalizerFixture("[{\"score\":0.9,\"show\":{\"id\":23,\"name\":\"Hawaii Five-0\"}}]");
+        await fixture.Canonicalizer.ResolveAsync([ShowNameNormalizer.Normalize("Hawaii Five-0")], CancellationToken.None);
+        fixture.Handler.Respond = _ => "[{\"score\":0.9,\"show\":{\"id\":23,\"name\":\"Hawaii Five-0\"}},{\"score\":0.9,\"show\":{\"id\":24,\"name\":\"Hawaii Five-0\"}}]";
+        var typo = ShowNameNormalizer.Normalize("Hawaii Flve 0");
+        var result = await fixture.Canonicalizer.ResolveAsync([typo], CancellationToken.None);
+        Assert.Equal("Hawaii Flve 0", result[typo.Identity]);
+    }
+
+    [Fact]
+    public async Task EmptyLookupDoesNotGuessBetweenEquallyCloseVerifiedShows()
+    {
+        using var fixture = new CanonicalizerFixture("[{\"score\":0.9,\"show\":{\"id\":23,\"name\":\"Hawaii Five-0\"}}]");
+        await fixture.Canonicalizer.ResolveAsync([ShowNameNormalizer.Normalize("Hawaii Five-0")], CancellationToken.None);
+        fixture.Handler.Respond = _ => "[{\"score\":0.9,\"show\":{\"id\":24,\"name\":\"Hawaii Flve 1\"}}]";
+        await fixture.Canonicalizer.ResolveAsync([ShowNameNormalizer.Normalize("Hawaii Flve 1")], CancellationToken.None);
+        fixture.Handler.Respond = _ => "[]";
+        var typo = ShowNameNormalizer.Normalize("Hawaii Flve 0");
+        var result = await fixture.Canonicalizer.ResolveAsync([typo], CancellationToken.None);
+        Assert.Equal("Hawaii Flve 0", result[typo.Identity]);
+    }
+
+    [Fact]
+    public async Task FailedLookupRotatesToAnotherShowOnNextRun()
+    {
+        using var fixture = new CanonicalizerFixture("[]", HttpStatusCode.TooManyRequests);
+        var first = ShowNameNormalizer.Normalize("Foundation");
+        var second = ShowNameNormalizer.Normalize("From");
+        await fixture.Canonicalizer.ResolveAsync([first, second], CancellationToken.None);
+        await fixture.Canonicalizer.ResolveAsync([first, second], CancellationToken.None);
+        Assert.Equal(2, fixture.Handler.Requests);
+        Assert.Contains("Foundation", fixture.Handler.Queries[0]);
+        Assert.Contains("From", fixture.Handler.Queries[1]);
+    }
+
+    [Fact]
+    public void EmbeddedConfigurationContainsTvmazeOption()
+    {
+        using var resource = typeof(ShowNameCanonicalizer).Assembly.GetManifestResourceStream("Jellyfin.Plugin.TVSorter.Configuration.configPage.html");
+        Assert.NotNull(resource);
+        using var reader = new StreamReader(resource!);
+        var page = reader.ReadToEnd();
+        Assert.Contains("id=\"UseTvmaze\"", page);
+        Assert.Contains("Use TVmaze to improve TV show names", page);
+    }
+
+    [Fact]
     public async Task UsesYearToDistinguishRemakesAndDoesNotBlindlyUseFirstResult()
     {
         using var fixture = new CanonicalizerFixture("""
@@ -152,16 +229,19 @@ internal sealed class MockTvmazeHandler(string json, HttpStatusCode status = Htt
 {
     public int Requests { get; private set; }
     public Exception? Failure { get; set; }
+    public Func<HttpRequestMessage, string>? Respond { get; set; }
+    public List<string> Queries { get; } = [];
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests++;
         Assert.Equal("api.tvmaze.com", request.RequestUri!.Host);
+        Queries.Add(request.RequestUri.Query);
         if (Failure is not null)
         {
             throw Failure;
         }
 
-        return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") });
+        return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(Respond?.Invoke(request) ?? json, System.Text.Encoding.UTF8, "application/json") });
     }
 }

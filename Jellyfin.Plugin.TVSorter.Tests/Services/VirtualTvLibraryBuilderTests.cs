@@ -272,6 +272,39 @@ public sealed class VirtualTvLibraryBuilderTests
     }
 
     [SkippableFact]
+    public async Task ReconcilesBothObservedNamePairsUsingRealisticSearchResponses()
+    {
+        var handler = new MockTvmazeHandler("[]")
+        {
+            Respond = request => request.RequestUri!.Query.Contains("Flve", StringComparison.Ordinal) ? "[]"
+                : request.RequestUri!.Query.Contains("Hawaii", StringComparison.Ordinal)
+                    ? "[{\"score\":0.9,\"show\":{\"id\":23,\"name\":\"Hawaii Five-0\"}}]"
+                    : "[{\"score\":0.5287102,\"show\":{\"id\":58933,\"name\":\"Happy Face\"}}]"
+        };
+        using var fixture = new BuilderFixture(handler);
+        var sources = new[]
+        {
+            fixture.AddSourceFile("Hawaii Flve 0", "S01E01.mkv"),
+            fixture.AddSourceFile("Hawaii Five-0", "S01E02.mkv"),
+            fixture.AddSourceFile("Happy Faces", "S01E01.mkv"),
+            fixture.AddSourceFile("Happy Face", "S01E02.mkv")
+        };
+        fixture.RequireSymlinks();
+        Assert.Equal(4, (await fixture.BuildAsync()).LinksCreated);
+        fixture.Configuration.UseTvmaze = true;
+        var result = await fixture.BuildAsync();
+        Assert.Equal(BuildStatus.Success, result.Status);
+        Assert.Equal(2, result.StaleLinksRemoved);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Target, "Hawaii Flve 0")));
+        Assert.False(Directory.Exists(Path.Combine(fixture.Target, "Happy Faces")));
+        Assert.True(new SymlinkManager().StoredTargetMatches(fixture.GetEpisodePath("Hawaii Five-0", 1, 1), sources[0]));
+        Assert.True(new SymlinkManager().StoredTargetMatches(fixture.GetEpisodePath("Happy Face", 1, 1), sources[2]));
+        Assert.All(sources, source => Assert.True(File.Exists(source)));
+        Assert.Equal(4, (await fixture.BuildAsync()).LinksAlreadyCorrect);
+        Assert.Equal(4, handler.Requests);
+    }
+
+    [SkippableFact]
     public async Task UnmarkedFilesKeepTheirOriginalBasenameUnderNormalizedShow()
     {
         using var fixture = new BuilderFixture();
