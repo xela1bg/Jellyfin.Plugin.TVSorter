@@ -6,7 +6,17 @@
         "overview": "Organize unsorted TV media for Jellyfin using symbolic links.",
         "owner": "xela1bg",
         "category": "General",
+        "image": "image.png",
+        "imageUrl": "https://raw.githubusercontent.com/xela1bg/Jellyfin.Plugin.TVSorter/main/tv-sorter/image.png",
         "versions": [
+            {
+                "version": "1.0.0.3",
+                "changelog": "- Added unattended TVmaze show-name canonicalization with persistent caching.\n- Normalized trailing years and case variants with local fallback when online matching fails.\n- Safely reconciled old managed links into canonical show directories.",
+                "targetAbi": "12.3.0.0",
+                "sourceUrl": "https://github.com/xela1bg/Jellyfin.Plugin.TVSorter/releases/download/v1.0.0.3/tv-sorter_1.0.0.3.zip",
+                "checksum": "8ce6aebcc9ba17d0f4b58a5369696f8f",
+                "timestamp": "2026-11-01T10:23:08Z"
+            },
             {
                 "version": "1.0.0.0",
                 "changelog": "Initial release.",
@@ -15,8 +25,6 @@
                 "checksum": "9fd042059d8da58055562c8556f8f0cb",
                 "timestamp": "2026-10-31T21:27:38Z"
             }
-        ],
-        "image": "image.png",
-        "imageUrl": "https://raw.githubusercontent.com/xela1bg/Jellyfin.Plugin.TVSorter/main/tv-sorter/image.png"
+        ]
     }
 ]
